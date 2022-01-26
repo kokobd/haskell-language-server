@@ -1363,46 +1363,31 @@ newImportToEdit (unNewImport -> imp) ps fileContents
 newImportInsertRange :: ParsedSource -> T.Text -> Maybe (Range, Int)
 newImportInsertRange (L _ HsModule {..}) fileContents
   |  Just ((l, c), col) <- case hsmodImports of
-      [] -> findPositionNoImports (fmap reLoc hsmodName) (fmap reLoc hsmodExports) fileContents
-      _  -> findPositionFromImportsOrModuleDecl (map reLoc hsmodImports) last True
+      [] -> (\l -> ((l, 0), 0)) <$> findPositionNoImports (fmap reLoc hsmodDecls) fileContents
+      _  -> findPositionFromImports (map reLoc hsmodImports) last
   , let insertPos = Position (fromIntegral l) (fromIntegral c)
     = Just (Range insertPos insertPos, col)
   | otherwise = Nothing
 
--- | Insert the import under the Module declaration exports if they exist, otherwise just under the module declaration.
--- If no module declaration exists, then no exports will exist either, in that case
--- insert the import after any file-header pragmas or at position zero if there are no pragmas
-findPositionNoImports :: Maybe (Located ModuleName) -> Maybe (Located [LIE name]) -> T.Text -> Maybe ((Int, Int), Int)
-findPositionNoImports Nothing _ fileContents = findNextPragmaPosition fileContents
-findPositionNoImports _ (Just hsmodExports) _ = findPositionFromImportsOrModuleDecl hsmodExports id False
-findPositionNoImports (Just hsmodName) _ _ = findPositionFromImportsOrModuleDecl hsmodName id False
+-- | Insert the import before the first declaration, if it has one. Otherwise, just append at the end of file
+findPositionNoImports :: [LHsDecl GhcPs] -> T.Text -> Maybe Int
+findPositionNoImports [] fileContents = pure . length . T.lines $ fileContents
+findPositionNoImports (decl:_) fileContents = do
+    declBeginningLine <- case getLoc decl of
+        RealSrcSpan sp _ -> Just (srcLocLine (realSrcSpanStart sp))
+        _                -> Nothing
+    fmap NE.last . NE.nonEmpty
+        . filter (<declBeginningLine) . fmap fst
+        . filter (not . T.null . T.strip . snd)
+        . zip [1..] . T.lines $ fileContents
 
-findPositionFromImportsOrModuleDecl :: HasSrcSpan a => t -> (t -> a) -> Bool -> Maybe ((Int, Int), Int)
-findPositionFromImportsOrModuleDecl hsField f hasImports = case getLoc (f hsField) of
+findPositionFromImports :: HasSrcSpan a => t -> (t -> a) -> Maybe ((Int, Int), Int)
+findPositionFromImports hsField f = case getLoc (f hsField) of
   RealSrcSpan s _ ->
     let col = calcCol s
      in Just ((srcLocLine (realSrcSpanEnd s), col), col)
   _ -> Nothing
-  where calcCol s = if hasImports then srcLocCol (realSrcSpanStart s) - 1 else 0
-
--- | Find the position one after the last file-header pragma
--- Defaults to zero if there are no pragmas in file
-findNextPragmaPosition :: T.Text -> Maybe ((Int, Int), Int)
-findNextPragmaPosition contents = Just ((lineNumber, 0), 0)
-  where
-    lineNumber = afterLangPragma . afterOptsGhc $ afterShebang
-    afterLangPragma = afterPragma "LANGUAGE" contents'
-    afterOptsGhc = afterPragma "OPTIONS_GHC" contents'
-    afterShebang = lastLineWithPrefix (T.isPrefixOf "#!") contents' 0
-    contents' = T.lines contents
-
-afterPragma :: T.Text -> [T.Text] -> Int -> Int
-afterPragma name contents lineNum = lastLineWithPrefix (checkPragma name) contents lineNum
-
-lastLineWithPrefix :: (T.Text -> Bool) -> [T.Text] -> Int -> Int
-lastLineWithPrefix p contents lineNum = max lineNum next
-  where
-    next = maybe lineNum succ $ listToMaybe . reverse $ findIndices p contents
+  where calcCol s = srcLocCol (realSrcSpanStart s) - 1
 
 checkPragma :: T.Text -> T.Text -> Bool
 checkPragma name = check
