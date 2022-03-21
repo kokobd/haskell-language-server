@@ -1,7 +1,6 @@
 dist-newstyle
 .stack-work
 /hie.yaml
-/install/hie.yaml
 cabal.project.local
 *~
 *.lock
@@ -32,7 +31,7 @@ test/testdata/**/hie.yaml
 .shake/
 
 # pre-commit-hook.nix
-.pre-commit-config.yaml
+#.pre-commit-config.yaml
 
 # direnv
 /.direnv/
@@ -45,3 +44,6 @@ test/testdata/**/hie.yaml
 # nix
 result
 result-doc
+
+out/
+store/

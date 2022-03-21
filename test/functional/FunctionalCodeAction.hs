@@ -43,7 +43,7 @@ renameTests = testGroup "rename suggestions" [
         cars <- getAllCodeActions doc
         replaceButStrLn <- liftIO $ inspectCommand cars ["Replace with", "putStrLn"]
         executeCommand replaceButStrLn
-        _ <- anyRequest
+        _ <- skipManyTill loggingNotification anyRequest
 
         x:_ <- T.lines <$> documentContents doc
         liftIO $ x @?= "main = putStrLn \"hello\""
@@ -65,7 +65,7 @@ renameTests = testGroup "rename suggestions" [
                 _ -> error $ "Unexpected arguments: " ++ show mbArgs
 
             executeCommand cmd
-            _ <- anyRequest
+            _ <- skipManyTill loggingNotification anyRequest
 
             x1:x2:_ <- T.lines <$> documentContents doc
             liftIO $
@@ -139,7 +139,8 @@ packageTests = testGroup "add package suggestions" [
             -- ignore the first empty hlint diagnostic publish
             [_,_:diag:_] <- count 2 $ waitForDiagnosticsFrom doc
 
-            let prefixes = [ "Could not load module `Codec.Compression.GZip'" -- Windows && GHC >= 8.6
+            let prefixes =
+                        [ "Could not load module `Codec.Compression.GZip'" -- Windows && GHC >= 8.6
                         , "Could not find module `Codec.Compression.GZip'" -- Windows
                         , "Could not load module ‘Codec.Compression.GZip’" -- GHC >= 8.6
                         , "Could not find module ‘Codec.Compression.GZip’"
@@ -148,7 +149,9 @@ packageTests = testGroup "add package suggestions" [
 
             mActions <- getAllCodeActions doc
             let allActions = map fromAction mActions
-                action = head allActions
+            action <- case allActions of
+                (a:_) -> pure a
+                _ -> liftIO $ assertFailure "Expected non-empty list of actions"
 
             liftIO $ do
                 action ^. L.title @?= "Add zlib as a dependency"
@@ -204,7 +207,7 @@ redundantImportTests = testGroup "redundant import code actions" [
         cas <- getAllCodeActions doc
         cmd <- liftIO $ inspectCommand cas ["redundant import"]
         executeCommand cmd
-        _ <- anyRequest
+        _ <- skipManyTill loggingNotification anyRequest
         contents <- documentContents doc
         liftIO $ T.lines contents @?=
                 [ "{-# OPTIONS_GHC -Wunused-imports #-}"

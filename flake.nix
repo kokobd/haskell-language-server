@@ -22,16 +22,54 @@
       flake = false;
     };
 
-    hackage-sources.url = "path:./flake_hackage";
+    # List of hackage dependencies
+    lsp = {
+      url = "https://hackage.haskell.org/package/lsp-1.4.0.0/lsp-1.4.0.0.tar.gz";
+      flake = false;
+    };
+    lsp-types = {
+      url = "https://hackage.haskell.org/package/lsp-types-1.4.0.1/lsp-types-1.4.0.1.tar.gz";
+      flake = false;
+    };
+    lsp-test = {
+      url = "https://hackage.haskell.org/package/lsp-test-0.14.0.2/lsp-test-0.14.0.2.tar.gz";
+      flake = false;
+    };
+    ghc-exactprint = {
+      url = "https://hackage.haskell.org/package/ghc-exactprint-1.4.1/ghc-exactprint-1.4.1.tar.gz";
+      flake = false;
+    };
+    constraints-extras = {
+      url = "https://hackage.haskell.org/package/constraints-extras-0.3.2.1/constraints-extras-0.3.2.1.tar.gz";
+      flake = false;
+    };
+    retrie = {
+      url = "https://hackage.haskell.org/package/retrie-1.2.0.1/retrie-1.2.0.1.tar.gz";
+      flake = false;
+    };
+    fourmolu = {
+      url = "https://hackage.haskell.org/package/fourmolu-0.5.0.1/fourmolu-0.5.0.1.tar.gz";
+      flake = false;
+    };
+    hlint = {
+      url = "https://hackage.haskell.org/package/hlint-3.3.6/hlint-3.3.6.tar.gz";
+      flake = false;
+    };
+    implicit-hie-cradle = {
+      url = "https://hackage.haskell.org/package/implicit-hie-cradle-0.3.0.5/implicit-hie-cradle-0.3.0.5.tar.gz";
+      flake = false;
+    };
+    hie-bios = {
+      url = "https://hackage.haskell.org/package/hie-bios-0.9.1/hie-bios-0.9.1.tar.gz";
+      flake = false;
+    };
   };
   outputs =
-    { self, nixpkgs, flake-compat, flake-utils, pre-commit-hooks, gitignore, hackage-sources }:
+    inputs@{ self, nixpkgs, flake-compat, flake-utils, pre-commit-hooks, gitignore, ... }:
     {
       overlay = final: prev:
         with prev;
         let
-          hackage = hackage-sources.inputs;
-
           haskellOverrides = hself: hsuper: {
             # we override mkDerivation here to apply the following
             # tweak to each haskell package:
@@ -74,20 +112,16 @@
             with haskell.lib; {
               # Patches don't apply
               github = overrideCabal hsuper.github (drv: { patches = []; });
-              # GHCIDE requires hie-bios >=0.8 && <0.9.0
-              hie-bios = hself.hie-bios_0_8_0;
+              # GHCIDE requires hie-bios ^>=0.9.1
+              hie-bios = hself.callCabal2nix "hie-bios" inputs.hie-bios {};
               # We need an older version
               hiedb = hself.hiedb_0_4_1_0;
 
-              lsp = hsuper.callCabal2nix "lsp" hackage.lsp {};
-              lsp-types = hsuper.callCabal2nix "lsp-types" hackage.lsp-types {};
-              lsp-test = hsuper.callCabal2nix "lsp-test" hackage.lsp-test {};
+              lsp = hsuper.callCabal2nix "lsp" inputs.lsp {};
+              lsp-types = hsuper.callCabal2nix "lsp-types" inputs.lsp-types {};
+              lsp-test = hsuper.callCabal2nix "lsp-test" inputs.lsp-test {};
 
-              implicit-hie-cradle = hself.callCabal2nix "implicit-hie-cradle"
-                (builtins.fetchTarball {
-                  url = "https://hackage.haskell.org/package/implicit-hie-cradle-0.3.0.5/implicit-hie-cradle-0.3.0.5.tar.gz";
-                  sha256 = "15a7g9x6cjk2b92hb2wilxx4550msxp1pmk5a2shiva821qaxnfq";
-                }) { };
+              implicit-hie-cradle = hself.callCabal2nix "implicit-hie-cradle" inputs.implicit-hie-cradle {};
 
               # https://github.com/NixOS/nixpkgs/issues/140774
               ormolu =
@@ -135,7 +169,6 @@
     } // (flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" "aarch64-darwin" ])
     (system:
       let
-        hackage = hackage-sources.inputs;
         pkgs = import nixpkgs {
           inherit system;
           overlays = [ self.overlay ];
@@ -174,7 +207,7 @@
         };
 
         ghc901Config = (import ./configuration-ghc-901.nix) { inherit pkgs; };
-        ghc921Config = (import ./configuration-ghc-921.nix) { inherit pkgs hackage; };
+        ghc921Config = (import ./configuration-ghc-921.nix) { inherit pkgs inputs; };
 
         # GHC versions
         ghcDefault = pkgs.hlsHpkgs ("ghc"
@@ -207,76 +240,145 @@
           dontInstall = true;
         };
 
+        mkDevShell = hpkgs: cabalProject: with pkgs; mkShell {
+          name = "haskell-language-server-dev-ghc${hpkgs.ghc.version}";
+          # For theses tools packages, we use ghcDefault
+          # This removes a rebuild with a different GHC version
+          # Theses programs are tools, used as binary, independently of the
+          # version of GHC.
+          # The drawback of this approach is that our shell may pull two GHC
+          # version in scope (the default one, and the one defined in
+          # `hpkgs`.)
+          # The advantage is that we won't have to rebuild theses tools (and
+          # dependencies) with a recent GHC which may not be supported by
+          # them.
+          buildInputs = [
+            # our compiling toolchain
+            hpkgs.ghc
+            pkgs.cabal-install
+            # @guibou: I'm not sure hie-bios is needed
+            ghcDefault.hie-bios
+            # Dependencies needed to build some parts of hackage
+            gmp zlib ncurses
+            # Changelog tooling
+            (gen-hls-changelogs ghcDefault)
+            # For the documentation
+            pythonWithPackages
+            # @guibou: I'm not sure this is needed.
+            hlint
+            ghcDefault.opentelemetry-extra
+            capstone tracy
+            # ormolu
+            # stylish-haskell
+            ];
+
+
+          shellHook = ''
+            # @guibou: I'm not sure theses lines are needed
+            export LD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
+            export DYLD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
+            export PATH=$PATH:$HOME/.local/bin
+
+            # Enable the shell hooks
+            ${(pre-commit-check ghcDefault).shellHook}
+
+            # If the cabal project file is not the default one.
+            # Print a warning and generate an alias.
+            if [ ${cabalProject} != "cabal.project" ]
+            then
+              echo "Cabal won't be able to build your project without using the project file "${cabalProject}", such as:"
+              echo "    cabal --project-file=${cabalProject}"
+              echo "An alias "cabal_project" is available. Use it like:"
+              echo "    cabal_project build"
+
+              alias cabal_project='cabal --project-file=${cabalProject}'
+            fi
+          '';
+        };
+
         # Create a development shell of hls project
         # See https://github.com/NixOS/nixpkgs/blob/5d4a430472cafada97888cc80672fab255231f57/pkgs/development/haskell-modules/make-package-set.nix#L319
-        mkDevShell = hpkgs:
+        mkDevShellWithNixDeps = hpkgs: cabalProject:
           with pkgs;
+          let simpleShell = mkDevShell hpkgs cabalProject;
+          in
           hpkgs.shellFor {
+            name = "haskell-language-server-dev-nix-ghc${hpkgs.ghc.version}";
+            inherit (simpleShell) shellHook buildInputs;
+
             doBenchmark = true;
             packages = p:
               with builtins;
               map (name: p.${name}) (attrNames
-                (if hpkgs.ghc.version == "9.0.1" then
-                  removeAttrs hlsSources ghc901Config.disabledPlugins
-                else if hpkgs.ghc.version == "9.2.1" then
-                  removeAttrs hlsSources ghc921Config.disabledPlugins
-                else
-                  hlsSources));
-            buildInputs = [ gmp zlib ncurses capstone tracy (gen-hls-changelogs hpkgs) pythonWithPackages ]
-              ++ (with hpkgs; [
-                cabal-install
-                hie-bios
-                hlint
-                # ormolu
-                # stylish-haskell
-                opentelemetry-extra
-              ]);
+              # Disable dependencies should not be part of the shell.
+              (removeAttrs hlsSources (hpkgs.hlsDisabledPlugins or [])));
 
             src = null;
-            shellHook = ''
-              export LD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
-              export DYLD_LIBRARY_PATH=${gmp}/lib:${zlib}/lib:${ncurses}/lib:${capstone}/lib
-              export PATH=$PATH:$HOME/.local/bin
-              ${if hpkgs.ghc.version != "9.0.1" then (pre-commit-check hpkgs).shellHook else ""}
-            '';
           };
         # Create a hls executable
         # Copied from https://github.com/NixOS/nixpkgs/blob/210784b7c8f3d926b7db73bdad085f4dc5d79418/pkgs/development/tools/haskell/haskell-language-server/withWrapper.nix#L16
         mkExe = hpkgs:
           with pkgs.haskell.lib;
-          justStaticExecutables (overrideCabal hpkgs.haskell-language-server
+          (enableSharedExecutables (overrideCabal hpkgs.haskell-language-server
             (_: {
               postInstall = ''
-                remove-references-to -t ${hpkgs.ghc} $out/bin/haskell-language-server
                 remove-references-to -t ${hpkgs.shake.data} $out/bin/haskell-language-server
                 remove-references-to -t ${hpkgs.js-jquery.data} $out/bin/haskell-language-server
                 remove-references-to -t ${hpkgs.js-dgtable.data} $out/bin/haskell-language-server
                 remove-references-to -t ${hpkgs.js-flot.data} $out/bin/haskell-language-server
               '';
-            }));
+            }))).overrideAttrs(old: {
+              pname = old.pname + "-ghc${hpkgs.ghc.version}";
+            });
       in with pkgs; rec {
+        # Developement shell with only compiler
+        simpleDevShells = {
+          haskell-language-server-dev = mkDevShell ghcDefault "cabal.project";
+          haskell-language-server-884-dev = mkDevShell ghc884 "cabal.project";
+          haskell-language-server-8107-dev = mkDevShell ghc8107 "cabal.project";
+          haskell-language-server-901-dev = mkDevShell ghc901 "cabal-ghc90.project";
+          haskell-language-server-921-dev = mkDevShell ghc921 "cabal-ghc921.project";
+        };
 
-        packages = {
-          # dev shell
-          haskell-language-server-dev = mkDevShell ghcDefault;
-          haskell-language-server-884-dev = mkDevShell ghc884;
-          haskell-language-server-8107-dev = mkDevShell ghc8107;
-          haskell-language-server-901-dev = mkDevShell ghc901;
-          haskell-language-server-921-dev = mkDevShell ghc921;
+        # Developement shell, haskell packages are also provided by nix
+        nixDevShells = {
+          haskell-language-server-dev-nix = mkDevShellWithNixDeps ghcDefault "cabal.project";
+          haskell-language-server-884-dev-nix = mkDevShellWithNixDeps ghc884 "cabal.project";
+          haskell-language-server-8107-dev-nix = mkDevShellWithNixDeps ghc8107 "cabal.project";
+          haskell-language-server-901-dev-nix = mkDevShellWithNixDeps ghc901 "cabal-ghc90.project";
+          haskell-language-server-921-dev-nix = mkDevShellWithNixDeps ghc921 "cabal-ghc921.project";
+        };
 
-          # hls package
+        allPackages = {
           haskell-language-server = mkExe ghcDefault;
           haskell-language-server-884 = mkExe ghc884;
           haskell-language-server-8107 = mkExe ghc8107;
           haskell-language-server-901 = mkExe ghc901;
           haskell-language-server-921 = mkExe ghc921;
+        };
 
-          # docs
+        devShells = simpleDevShells // nixDevShells;
+
+        packages = allPackages // {
+          # See https://github.com/NixOS/nix/issues/5591
+          # nix flake cannot build a list/set of derivation in one command.
+          # Using a linkFarmFromDrvs, I'm creating a unique entry point to
+          # build all HLS versions.
+          # This is used in CI to test and populate cache for packages
+          # distributed using nix.
+          all-haskell-language-server = linkFarmFromDrvs "all-haskell-language-server" (lib.unique (builtins.attrValues allPackages));
+
+          # Same for all shells
+          # We try to build as much as possible, but not much shells are
+          # working (especially on darwing), so this list is limited.
+          all-nix-dev-shells = linkFarmFromDrvs "all-dev-shells" (builtins.map (shell: shell.inputDerivation) (lib.unique [nixDevShells.haskell-language-server-dev-nix]));
+
+          all-simple-dev-shells = linkFarmFromDrvs "all-dev-shells" (builtins.map (shell: shell.inputDerivation) (lib.unique (builtins.attrValues simpleDevShells)));
           docs = docs;
         };
 
         defaultPackage = packages.haskell-language-server;
 
-        devShell = packages.haskell-language-server-dev;
+        devShell = devShells.haskell-language-server-dev;
       });
 }

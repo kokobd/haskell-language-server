@@ -1,7 +1,7 @@
 cabal-version:      2.4
 category:           Development
 name:               haskell-language-server
-version:            1.5.1.0
+version:            1.6.1.1
 synopsis:           LSP server for GHC
 description:
   Please see the README on GitHub at <https://github.com/haskell/haskell-language-server#readme>
@@ -39,6 +39,7 @@ common common-deps
     , extra
     , filepath
     , text
+    , prettyprinter
 
 -- Default warnings in HLS
 common warnings
@@ -70,13 +71,12 @@ library
     , cryptohash-sha1
     , data-default
     , ghc
-    , ghcide                ^>=1.4 || ^>=1.5
+    , ghcide                ^>=1.6
     , githash
     , lsp
     , hie-bios
     , hiedb
-    , hls-plugin-api        ^>=1.2
-    , hslogger
+    , hls-plugin-api        ^>=1.3
     , optparse-applicative
     , optparse-simple
     , process
@@ -181,6 +181,11 @@ flag selectionRange
   default:     True
   manual:      True
 
+flag changeTypeSignature
+  description: Enable changeTypeSignature plugin
+  default:     True
+  manual:      True
+
 -- formatters
 
 flag floskell
@@ -205,6 +210,11 @@ flag stylishHaskell
 
 flag brittany
   description: Enable brittany plugin
+  default:     True
+  manual:      True
+
+flag dynamic
+  description: Build with the dyn rts
   default:     True
   manual:      True
 
@@ -255,7 +265,7 @@ common retrie
 
 common tactic
   if flag(tactic) && (impl(ghc < 9.0.1) || flag(ignore-plugins-ghc-bounds))
-    build-depends: hls-tactics-plugin >=1.2.0.0 && <1.6
+    build-depends: hls-tactics-plugin >=1.2.0.0 && <1.7
     cpp-options: -Dtactic
 
 common hlint
@@ -293,6 +303,11 @@ common selectionRange
     build-depends: hls-selection-range-plugin ^>=1.0.0.0
     cpp-options: -DselectionRange
 
+common changeTypeSignature
+  if flag(changeTypeSignature)
+    build-depends: hls-change-type-signature-plugin ^>=1.0.0.0
+    cpp-options: -DchangeTypeSignature
+
 -- formatters
 
 common floskell
@@ -316,7 +331,7 @@ common stylishHaskell
     cpp-options: -DstylishHaskell
 
 common brittany
-  if flag(brittany) && (impl(ghc < 9.0.1) || flag(ignore-plugins-ghc-bounds))
+  if flag(brittany) && (impl(ghc < 9.0.2) || flag(ignore-plugins-ghc-bounds))
     build-depends: hls-brittany-plugin ^>=1.0.0.1
     cpp-options: -Dbrittany
 
@@ -328,6 +343,7 @@ executable haskell-language-server
                     -- plugins
                     , example-plugins
                     , callHierarchy
+                    , changeTypeSignature
                     , class
                     , haddockComments
                     , eval
@@ -364,6 +380,15 @@ executable haskell-language-server
     -Wno-unticked-promoted-constructors
   if flag(pedantic)
     ghc-options: -Werror
+  if !os(windows) && flag(dynamic)
+  -- We want to link against the dyn rts just like official GHC binaries do;
+  --   the linked rts determines how external libs are loaded dynamically by TH.
+  -- The standard way of doing this is via the --enable-dynamic-executables Cabal option
+  -- Unfortunately it doesnt' work, see https://github.com/haskell/haskell-language-server/issues/2659
+  -- One can use --ghc-options=-dynamic but this gets applied to the dependencies as well,
+  -- which results in massive rebuilds and incompatibilities with profiling.
+  -- So instead we set the -dynamic flag diretly here.
+    ghc-options: -dynamic
 
   build-depends:
     , aeson
@@ -384,7 +409,6 @@ executable haskell-language-server
     , hiedb
     , lens
     , regex-tdfa
-    , hslogger
     , optparse-applicative
     , hls-plugin-api
     , lens
@@ -428,6 +452,10 @@ executable haskell-language-server-wrapper
     , optparse-applicative
     , optparse-simple
     , process
+  if !os(windows)
+      build-depends:
+          unix
+        , containers
 
   default-language: Haskell2010
 
@@ -449,7 +477,7 @@ test-suite func-test
     , lens
     , lens-aeson
     , ghcide
-    , hls-test-utils ^>= 1.1.0.0
+    , hls-test-utils ^>=1.2
     , lsp-types
     , aeson
     , hls-plugin-api

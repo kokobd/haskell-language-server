@@ -18,7 +18,7 @@ module Test.Hls.Util
     , flushStackEnvironment
     , fromAction
     , fromCommand
-    , getHspecFormattedConfig
+    , getCompletionByLabel
     , ghcVersion, GhcVersion(..)
     , hostOS, OS(..)
     , matchesCurrentEnv, EnvSpec(..)
@@ -49,9 +49,7 @@ import           Control.Monad.IO.Class
 import qualified Data.Aeson                      as A
 import           Data.Bool                       (bool)
 import           Data.Default
-import           Data.List                       (intercalate)
 import           Data.List.Extra                 (find)
-import           Data.Maybe
 import qualified Data.Set                        as Set
 import qualified Data.Text                       as T
 import           Development.IDE                 (GhcVersion(..), ghcVersion)
@@ -65,15 +63,11 @@ import           System.FilePath
 import           System.IO.Temp
 import           System.Info.Extra               (isMac, isWindows)
 import           System.Time.Extra               (Seconds, sleep)
-import           Test.Hspec.Core.Formatters      hiding (Seconds)
-import           Test.Hspec.Runner
 import           Test.Tasty                      (TestTree)
 import           Test.Tasty.ExpectedFailure      (expectFailBecause,
                                                   ignoreTestBecause)
 import           Test.Tasty.HUnit                (Assertion, assertFailure,
                                                   (@?=))
-import           Text.Blaze.Internal             hiding (null)
-import           Text.Blaze.Renderer.String      (renderMarkup)
 
 noLiteralCaps :: C.ClientCapabilities
 noLiteralCaps = def { C._textDocument = Just textDocumentCaps }
@@ -165,88 +159,6 @@ hieYamlCradleDirectContents = unlines
   , "      - -i."
   ]
 
-
--- ---------------------------------------------------------------------
-
-getHspecFormattedConfig :: String -> IO Config
-getHspecFormattedConfig name = do
-  -- https://circleci.com/docs/2.0/env-vars/#built-in-environment-variables
-  isCI <- isJust <$> lookupEnv "CI"
-
-  -- Only use the xml formatter on CI since it hides console output
-  if isCI
-    then do
-      let subdir = "test-results" </> name
-      createDirectoryIfMissing True subdir
-
-      return $ defaultConfig { configFormatter = Just xmlFormatter
-                             , configOutputFile = Right $ subdir </> "results.xml"
-                             }
-    else return defaultConfig
-
--- | A Hspec formatter for CircleCI.
--- Originally from https://github.com/LeastAuthority/hspec-jenkins
-xmlFormatter :: Formatter
-xmlFormatter = silent {
-    headerFormatter = do
-      writeLine "<?xml version='1.0' encoding='UTF-8'?>"
-      writeLine "<testsuite>"
-  , exampleSucceeded
-  , exampleFailed
-  , examplePending
-  , footerFormatter = writeLine "</testsuite>"
-  }
-  where
-
-#if MIN_VERSION_hspec(2,5,0)
-    exampleSucceeded path _ =
-#else
-    exampleSucceeded path =
-#endif
-      writeLine $ renderMarkup $ testcase path ""
-
-#if MIN_VERSION_hspec(2,5,0)
-    exampleFailed path _ err =
-#else
-    exampleFailed path (Left err) =
-      writeLine $ renderMarkup $ testcase path $
-        failure ! message (show err) $ ""
-    exampleFailed path (Right err) =
-#endif
-      writeLine $ renderMarkup $ testcase path $
-        failure ! message (reasonAsString err) $ ""
-
-#if MIN_VERSION_hspec(2,5,0)
-    examplePending path _ reason =
-#else
-    examplePending path reason =
-#endif
-      writeLine $ renderMarkup $ testcase path $
-        case reason of
-          Just desc -> skipped ! message desc  $ ""
-          Nothing   -> skipped ""
-
-    failure, skipped :: Markup -> Markup
-    failure = customParent "failure"
-    skipped = customParent "skipped"
-
-    name, className, message :: String -> Attribute
-    name = customAttribute "name" . stringValue
-    className = customAttribute "classname" . stringValue
-    message = customAttribute "message" . stringValue
-
-    testcase :: Path -> Markup -> Markup
-    testcase (xs,x) = customParent "testcase" ! name x ! className (intercalate "." xs)
-
-    reasonAsString :: FailureReason -> String
-    reasonAsString NoReason = "no reason given"
-    reasonAsString (Reason x) = x
-    reasonAsString (ExpectedButGot Nothing expected got) = "Expected " ++ expected ++ " but got " ++ got
-    reasonAsString (ExpectedButGot (Just src) expected got) = src ++ " expected " ++ expected ++ " but got " ++ got
-#if MIN_VERSION_hspec(2,5,0)
-    reasonAsString (Error Nothing err ) = show err
-    reasonAsString (Error (Just s) err) = s ++ show err
-#endif
 
 -- ---------------------------------------------------------------------
 
@@ -447,3 +359,12 @@ actual `expectSameLocations` expected = do
                               fp <- canonicalizePath file
                               return (filePathToUri fp, l, c))
     actual' @?= expected'
+
+-- ---------------------------------------------------------------------
+getCompletionByLabel :: MonadIO m => T.Text -> [CompletionItem] -> m CompletionItem
+getCompletionByLabel desiredLabel compls = 
+    case find (\c -> c ^. L.label == desiredLabel) compls of
+        Just c -> pure c
+        Nothing -> liftIO . assertFailure $
+            "Completion with label " <> show desiredLabel
+            <> " not found in " <> show (fmap (^. L.label) compls)

@@ -38,3 +38,13 @@ To generate suggestions, the plugin leverages the `Numeric` package which provid
 ## Changelog
 ### 1.0.0.0
 - First Release
+
+### 1.0.1.0
+- Dependency upgrades
+
+### 1.0.1.1
+- Buildable with GHC 9.2
+
+### 1.0.2.0
+- Test Suite upgraded for 9.2 semantics (GHC2021)
+- Fix SYB parsing with GHC 9.2
