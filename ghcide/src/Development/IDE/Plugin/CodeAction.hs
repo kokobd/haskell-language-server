@@ -19,8 +19,8 @@ module Development.IDE.Plugin.CodeAction
 
 import           Control.Applicative                               ((<|>))
 import           Control.Arrow                                     (second,
-                                                                    (>>>),
-                                                                    (&&&))
+                                                                    (&&&),
+                                                                    (>>>))
 import           Control.Concurrent.STM.Stats                      (atomically)
 import           Control.Monad                                     (guard, join,
                                                                     msum)
@@ -41,8 +41,8 @@ import qualified Data.Rope.UTF16                                   as Rope
 import qualified Data.Set                                          as S
 import qualified Data.Text                                         as T
 import           Data.Tuple.Extra                                  (fst3)
-import           Development.IDE.Core.Rules
 import           Development.IDE.Core.RuleTypes
+import           Development.IDE.Core.Rules
 import           Development.IDE.Core.Service
 import           Development.IDE.GHC.Compat
 import           Development.IDE.GHC.Compat.Util
@@ -1388,7 +1388,7 @@ newImportToEdit (unNewImport -> imp) ps fileContents
 newImportInsertRange :: ParsedSource -> T.Text -> Maybe (Range, Int)
 newImportInsertRange (L _ HsModule {..}) fileContents
   |  Just ((l, c), col) <- case hsmodImports of
-      [] -> findPositionNoImports (fmap reLoc hsmodName) (fmap reLoc hsmodExports) fileContents
+      [] -> findPositionNoImports (fmap reLoc hsmodName) hsmodDecls fileContents
       _  -> findPositionFromImportsOrModuleDecl (map reLoc hsmodImports) last True
   , let insertPos = Position (fromIntegral l) (fromIntegral c)
     = Just (Range insertPos insertPos, col)
@@ -1397,10 +1397,13 @@ newImportInsertRange (L _ HsModule {..}) fileContents
 -- | Insert the import under the Module declaration exports if they exist, otherwise just under the module declaration.
 -- If no module declaration exists, then no exports will exist either, in that case
 -- insert the import after any file-header pragmas or at position zero if there are no pragmas
-findPositionNoImports :: Maybe (Located ModuleName) -> Maybe (Located [LIE name]) -> T.Text -> Maybe ((Int, Int), Int)
+findPositionNoImports :: Maybe (Located ModuleName) -> [LHsDecl GhcPs] -> T.Text -> Maybe ((Int, Int), Int)
 findPositionNoImports Nothing _ fileContents = findNextPragmaPosition fileContents
-findPositionNoImports _ (Just hsmodExports) _ = findPositionFromImportsOrModuleDecl hsmodExports id False
-findPositionNoImports (Just hsmodName) _ _ = findPositionFromImportsOrModuleDecl hsmodName id False
+findPositionNoImports _ [] fileContents = Just ((length $ T.lines fileContents, 0), 0)
+findPositionNoImports _ (firstDecl:_) _ =
+    case getLoc firstDecl of
+        RealSrcSpan s _ -> Just ((srcLocLine (realSrcSpanStart s) - 1, 0), 0)
+        _               -> Nothing
 
 findPositionFromImportsOrModuleDecl :: HasSrcSpan a => t -> (t -> a) -> Bool -> Maybe ((Int, Int), Int)
 findPositionFromImportsOrModuleDecl hsField f hasImports = case getLoc (f hsField) of
