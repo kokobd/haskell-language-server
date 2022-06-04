@@ -243,8 +243,8 @@ findDeclContainingLoc loc = find (\(L l _) -> loc `isInsideSrcSpan` locA l)
 --  imported from ‘Data.ByteString’ at B.hs:6:1-22
 --  imported from ‘Data.ByteString.Lazy’ at B.hs:8:1-27
 --  imported from ‘Data.Text’ at B.hs:7:1-16
-suggestHideShadow :: ParsedSource -> T.Text -> Maybe TcModuleResult -> Maybe HieAstResult -> Diagnostic -> [(T.Text, [Either TextEdit Rewrite])]
-suggestHideShadow ps@(L _ HsModule {hsmodImports}) fileContents mTcM mHar Diagnostic {_message, _range}
+suggestHideShadow :: Annotated ParsedSource -> T.Text -> Maybe TcModuleResult -> Maybe HieAstResult -> Diagnostic -> [(T.Text, [Either TextEdit Rewrite])]
+suggestHideShadow ps fileContents mTcM mHar Diagnostic {_message, _range}
   | Just [identifier, modName, s] <-
       matchRegexUnifySpaces
         _message
@@ -261,6 +261,7 @@ suggestHideShadow ps@(L _ HsModule {hsmodImports}) fileContents mTcM mHar Diagno
     result <> [hideAll]
   | otherwise = []
   where
+    L _ HsModule {hsmodImports} = astA ps
     suggests identifier modName s
       | Just tcM <- mTcM,
         Just har <- mHar,
@@ -915,11 +916,11 @@ isPreludeImplicit = xopt Lang.ImplicitPrelude
 suggestImportDisambiguation ::
     DynFlags ->
     Maybe T.Text ->
-    ParsedSource ->
+    Annotated ParsedSource ->
     T.Text ->
     Diagnostic ->
     [(T.Text, [Either TextEdit Rewrite])]
-suggestImportDisambiguation df (Just txt) ps@(L _ HsModule {hsmodImports}) fileContents diag@Diagnostic {..}
+suggestImportDisambiguation df (Just txt) ps fileContents diag@Diagnostic {..}
     | Just [ambiguous] <-
         matchRegexUnifySpaces
             _message
@@ -931,6 +932,7 @@ suggestImportDisambiguation df (Just txt) ps@(L _ HsModule {hsmodImports}) fileC
         suggestions ambiguous modules (isJust local)
     | otherwise = []
     where
+        (L _ HsModule {hsmodImports}) = astA ps
         locDic =
             fmap (NE.fromList . DL.toList) $
             Map.fromListWith (<>) $
@@ -1023,7 +1025,7 @@ targetModuleName (ExistingImp _) =
     error "Cannot happen!"
 
 disambiguateSymbol ::
-    ParsedSource ->
+    Annotated ParsedSource ->
     T.Text ->
     Diagnostic ->
     T.Text ->
@@ -1267,7 +1269,7 @@ removeRedundantConstraints df (L _ HsModule {hsmodDecls}) Diagnostic{..}
 
 -------------------------------------------------------------------------------------------------
 
-suggestNewOrExtendImportForClassMethod :: ExportsMap -> ParsedSource -> T.Text -> Diagnostic -> [(T.Text, CodeActionKind, [Either TextEdit Rewrite])]
+suggestNewOrExtendImportForClassMethod :: ExportsMap -> Annotated ParsedSource -> T.Text -> Diagnostic -> [(T.Text, CodeActionKind, [Either TextEdit Rewrite])]
 suggestNewOrExtendImportForClassMethod packageExportsMap ps fileContents Diagnostic {_message}
   | Just [methodName, className] <-
       matchRegexUnifySpaces
@@ -1281,7 +1283,7 @@ suggestNewOrExtendImportForClassMethod packageExportsMap ps fileContents Diagnos
   where
     suggest identInfo@IdentInfo {moduleNameText}
       | importStyle <- NE.toList $ importStyles identInfo,
-        mImportDecl <- findImportDeclByModuleName (hsmodImports $ unLoc ps) (T.unpack moduleNameText) =
+        mImportDecl <- findImportDeclByModuleName (hsmodImports . unLoc . astA $ ps) (T.unpack moduleNameText) =
         case mImportDecl of
           -- extend
           Just decl ->
@@ -1303,8 +1305,8 @@ suggestNewOrExtendImportForClassMethod packageExportsMap ps fileContents Diagnos
               <> [(quickFixImportKind "new.all", newImportAll moduleNameText)]
             | otherwise -> []
 
-suggestNewImport :: ExportsMap -> ParsedSource -> T.Text -> Diagnostic -> [(T.Text, CodeActionKind, TextEdit)]
-suggestNewImport packageExportsMap ps@(L _ HsModule {..}) fileContents Diagnostic{_message}
+suggestNewImport :: ExportsMap -> Annotated ParsedSource -> T.Text -> Diagnostic -> [(T.Text, CodeActionKind, TextEdit)]
+suggestNewImport packageExportsMap ps fileContents Diagnostic{_message}
   | msg <- unifySpaces _message
   , Just thingMissing <- extractNotInScopeName msg
   , qual <- extractQualifiedModuleName msg
@@ -1319,6 +1321,8 @@ suggestNewImport packageExportsMap ps@(L _ HsModule {..}) fileContents Diagnosti
   = sortOn fst3 [(imp, kind, TextEdit range (imp <> "\n" <> T.replicate indent " "))
     | (kind, unNewImport -> imp) <- constructNewImportSuggestions packageExportsMap (qual <|> qual', thingMissing) extendImportSuggestions
     ]
+  where
+    (L _ HsModule {..}) = astA ps
 suggestNewImport _ _ _ _ = []
 
 constructNewImportSuggestions
@@ -1346,7 +1350,7 @@ constructNewImportSuggestions exportsMap (qual, thingMissing) notTheseModules = 
 newtype NewImport = NewImport {unNewImport :: T.Text}
   deriving (Show, Eq, Ord)
 
-newImportToEdit :: NewImport -> ParsedSource -> T.Text -> Maybe (T.Text, TextEdit)
+newImportToEdit :: NewImport -> Annotated ParsedSource -> T.Text -> Maybe (T.Text, TextEdit)
 newImportToEdit (unNewImport -> imp) ps fileContents
   | Just (range, indent) <- newImportInsertRange ps fileContents
   = Just (imp, TextEdit range (imp <> "\n" <> T.replicate indent " "))
@@ -1360,14 +1364,16 @@ newImportToEdit (unNewImport -> imp) ps fileContents
 -- * If the file has neither existing imports nor a module declaration,
 -- the import will be inserted at line zero if there are no pragmas,
 -- * otherwise inserted one line after the last file-header pragma
-newImportInsertRange :: ParsedSource -> T.Text -> Maybe (Range, Int)
-newImportInsertRange (L _ HsModule {..}) fileContents
+newImportInsertRange :: Annotated ParsedSource -> T.Text -> Maybe (Range, Int)
+newImportInsertRange ps fileContents
   |  Just ((l, c), col) <- case hsmodImports of
       [] -> (\l -> ((l, 0), 0)) <$> findPositionNoImports (fmap reLoc hsmodDecls) fileContents
       _  -> findPositionFromImports (map reLoc hsmodImports) last
   , let insertPos = Position (fromIntegral l) (fromIntegral c)
     = Just (Range insertPos insertPos, col)
   | otherwise = Nothing
+  where
+    (L _ HsModule {..}) = astA ps
 
 -- | Insert the import before the first declaration, if it has one. Otherwise, just append at the end of file
 findPositionNoImports :: [LHsDecl GhcPs] -> T.Text -> Maybe Int
@@ -1748,8 +1754,8 @@ renderImportStyle (ImportAllConstructors p) = p <> "(..)"
 
 -- | Used for extending import lists
 unImportStyle :: ImportStyle -> (Maybe String, String)
-unImportStyle (ImportTopLevel x)    = (Nothing, T.unpack x)
-unImportStyle (ImportViaParent x y) = (Just $ T.unpack y, T.unpack x)
+unImportStyle (ImportTopLevel x)        = (Nothing, T.unpack x)
+unImportStyle (ImportViaParent x y)     = (Just $ T.unpack y, T.unpack x)
 unImportStyle (ImportAllConstructors x) = (Just $ T.unpack x, wildCardSymbol)
 
 
