@@ -62,6 +62,7 @@ source-repository-package
   location: https://github.com/pepeiborra/ekg-json
   tag: 7a0af7a8fd38045fd15fb13445bdcc7085325460
   -- https://github.com/tibbe/ekg-json/pull/12
+  --sha256: 115lx3zb57y0aj61lg3r03nxa248018827pypw52xl8cd320lp3x
 
 allow-newer:
   -- ghc-9.2
