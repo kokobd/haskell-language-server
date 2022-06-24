@@ -30,7 +30,12 @@
                 src = ./.;
                 compiler-nix-name = "ghc923"; # TODO multiple compiler versions
                 projectFileName = "cabal.project";
-                # Haskell shell tools go here
+                modules = [
+                  {
+                    enableLibraryProfiling = true;
+                    enableProfiling = true;
+                  }
+                ];
                 shell = {
                   withHoogle = true;
 
