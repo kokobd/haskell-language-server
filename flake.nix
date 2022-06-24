@@ -34,6 +34,8 @@
                   {
                     enableLibraryProfiling = true;
                     enableProfiling = true;
+                    enableShared = true;
+                    enableStatic = false;
                   }
                 ];
                 shell = {

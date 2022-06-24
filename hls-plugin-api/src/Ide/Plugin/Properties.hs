@@ -45,6 +45,7 @@ import           Data.Either          (fromRight)
 import           Data.Function        ((&))
 import           Data.Kind            (Constraint, Type)
 import qualified Data.Map.Strict      as Map
+import           Data.Maybe
 import           Data.Proxy           (Proxy (..))
 import           Data.String          (IsString (fromString))
 import qualified Data.Text            as T
@@ -186,7 +187,7 @@ find ::
   KeyNameProxy s ->
   Properties r ->
   (SPropertyKey k, MetaData t)
-find kn (Properties p) = case p Map.! symbolVal kn of
+find kn (Properties p) = case fromJust (p Map.!? symbolVal kn) of
   (SomePropertyKeyWithMetaData sing metadata) ->
     -- Note [Constraints]
     -- It's safe to use unsafeCoerce here:
