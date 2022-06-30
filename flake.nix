@@ -30,14 +30,16 @@
                 src = ./.;
                 compiler-nix-name = "ghc923"; # TODO multiple compiler versions
                 projectFileName = "cabal.project";
-                modules = [
-                  {
-                    enableLibraryProfiling = true;
-                    enableProfiling = true;
-                    enableShared = true;
-                    enableStatic = false;
-                  }
-                ];
+                modules = [{
+                  reinstallableLibGhc = false;
+                  nonReinstallablePkgs = [
+                    "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base" "deepseq" "array" "ghc-boot-th"
+                    "pretty" "template-haskell" "ghcjs-prim" "ghcjs-th" "ghc-bignum" "exceptions" "stm" "ghc-boot"
+                    "ghc" "Cabal" "Win32" "array" "binary" "bytestring" "containers" "directory" "filepath" "ghc-boot"
+                    "ghc-compact" "ghc-prim" "hpc" "mtl" "parsec" "process" "text" "time" "transformers" "unix" "xhtml"
+                    "terminfo"
+                  ];
+                }];
                 shell = {
                   withHoogle = true;
 
