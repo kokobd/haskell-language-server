@@ -81,6 +81,7 @@ library
     , stm-containers
     , time
     , transformers
+    , unliftio
     , unordered-containers
 
   if flag(embed-files)
@@ -133,4 +134,5 @@ test-suite tests
     , tasty-hunit
     , tasty-rerun
     , text
+    , unordered-containers
   build-tool-depends: hspec-discover:hspec-discover -any
