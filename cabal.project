@@ -64,6 +64,12 @@ source-repository-package
   -- https://github.com/tibbe/ekg-json/pull/12
   --sha256: 115lx3zb57y0aj61lg3r03nxa248018827pypw52xl8cd320lp3x
 
+source-repository-package
+  type: git
+  location: https://github.com/kokobd/ghc-check
+  tag: c69ac15627e3418cba67ca8afaf32ff535c79c1c
+  --sha256: y5+mI9Z9j9WCEZR0JNJNOMZt6cVp7aH+i+22h0g1O1Q=
+
 allow-newer:
   -- ghc-9.2
   ----------

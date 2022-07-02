@@ -26,7 +26,7 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
       let
         # List of supported compilers. The first is the default.
-        compilers = [ "ghc8107" "ghc923" "ghc922" "ghc902" "ghc884" "ghc865" ];
+        compilers = [ "ghc923" "ghc922" "ghc902" "ghc8107" "ghc884" "ghc865" ];
 
         hlsDrvName = compiler: "haskell-language-server-dev-${compiler}";
 
@@ -44,7 +44,7 @@
                   nonReinstallablePkgs = [
                     "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base" "deepseq" "array" "ghc-boot-th"
                     "pretty" "template-haskell" "ghcjs-prim" "ghcjs-th" "ghc-bignum" "exceptions" "stm" "ghc-boot"
-                    "ghc" "Cabal" "Win32" "array" "binary" "bytestring" "containers" "directory" "filepath" "ghc-compact"
+                    "ghc" "Win32" "array" "binary" "bytestring" "containers" "directory" "filepath" "ghc-compact"
                     "ghc-prim" "hpc" "mtl" "parsec" "process" "text" "time" "transformers" "unix" "xhtml" "terminfo"
                   ];
                 }];
