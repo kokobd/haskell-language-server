@@ -25,11 +25,6 @@ flag pedantic
   default:     False
   manual:      True
 
-flag ghc-lib
-   default:     True
-   manual:      True
-   description: Use ghc-lib types (requires hlint to be built with ghc-lib)
-
 library
   exposed-modules:    Ide.Plugin.Hlint
   hs-source-dirs:     src
@@ -64,6 +59,10 @@ library
     , ghc-lib
     , ghc-lib-parser
     , ghc-lib-parser-ex
+  -- if impl(ghc ^>= 8.10)
+  --   build-depends: ghc-lib ^>= 8.10
+  -- else
+  --   build-depends: ghc-lib
 
   cpp-options:   -DHLINT_ON_GHC_LIB
   ghc-options:

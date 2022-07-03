@@ -12,7 +12,7 @@
   description = "Haskell Language Server";
 
   inputs = {
-    haskellNix.url = "github:input-output-hk/haskell.nix";
+    haskellNix.url = "github:kokobd/haskell.nix";
     nixpkgs.follows = "haskellNix/nixpkgs-unstable";
     rawNixpkgs.url = "nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -39,15 +39,6 @@
                 src = ./.;
                 compiler-nix-name = compiler;
                 projectFileName = "cabal.project";
-                modules = [{
-                  reinstallableLibGhc = false;
-                  nonReinstallablePkgs = [
-                    "rts" "ghc-heap" "ghc-prim" "integer-gmp" "integer-simple" "base" "deepseq" "array" "ghc-boot-th"
-                    "pretty" "template-haskell" "ghcjs-prim" "ghcjs-th" "ghc-bignum" "exceptions" "stm" "ghc-boot"
-                    "ghc" "Win32" "array" "binary" "bytestring" "containers" "directory" "filepath" "ghc-compact"
-                    "ghc-prim" "hpc" "mtl" "parsec" "process" "text" "time" "transformers" "unix" "xhtml" "terminfo"
-                  ];
-                }];
                 shell = {
                   withHoogle = true;
 
